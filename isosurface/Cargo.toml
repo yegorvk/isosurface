@@ -1,0 +1,19 @@
+[package]
+authors = ["Tristam MacDonald <swiftcoder@gmail.com>"]
+description = "Isosurface extraction algorithms"
+edition = "2021"
+license = "Apache-2.0"
+name = "isosurface"
+readme = "../README.md"
+repository = "https://github.com/swiftcoder/isosurface"
+version = "0.1.0-alpha.0"
+
+[dependencies]
+glam = "0.29.2"
+
+[dev-dependencies]
+criterion = "0.5.1"
+
+[[bench]]
+harness = false
+name = "isosurface"
