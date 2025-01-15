@@ -15,7 +15,7 @@
 mod dual_grid;
 mod implicit_octree;
 mod primal_grid;
-mod signed_octree;
+mod minimal_edges;
 
 pub use dual_grid::*;
 pub use implicit_octree::*;

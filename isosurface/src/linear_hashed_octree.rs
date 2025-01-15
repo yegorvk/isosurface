@@ -13,55 +13,67 @@
 // limitations under the License.
 
 use crate::morton::Morton;
-use std::collections::{HashMap, VecDeque};
+use fxhash::FxHashMap;
+use std::collections::VecDeque;
+
+pub enum OctreeNode<Node> {
+    Internal,
+    Leaf(Node),
+    None,
+}
+
+impl<Node> OctreeNode<Node> {
+    pub fn into_leaf(self) -> Option<Node> {
+        match self {
+            OctreeNode::Leaf(leaf) => Some(leaf),
+            _ => None,
+        }
+    }
+}
 
 pub struct LinearHashedOctree<Node> {
-    nodes: HashMap<Morton, Node>,
-    leaves: Vec<Morton>,
+    nodes: FxHashMap<Morton, Node>,
 }
 
 impl<Node> LinearHashedOctree<Node> {
     pub fn new() -> Self {
         Self {
-            nodes: HashMap::new(),
-            leaves: Vec::new(),
+            nodes: FxHashMap::default(),
         }
     }
 
-    pub fn build<R, C>(&mut self, mut should_refine: R, mut construct_node: C)
+    pub fn build<C>(&mut self, mut create_node: C)
     where
-        R: FnMut(Morton, &Node) -> bool,
-        C: FnMut(Morton) -> Node,
+        C: FnMut(Morton) -> OctreeNode<Node>,
     {
         let mut queue = VecDeque::new();
         queue.push_back(Morton::new());
 
         while let Some(key) = queue.pop_front() {
-            let node = construct_node(key);
-
-            if should_refine(key, &node) {
-                for i in 0..8 {
-                    queue.push_back(key.child(i));
+            match create_node(key) {
+                OctreeNode::Internal => {
+                    for i in 0..8 {
+                        queue.push_back(key.child(i));
+                    }
                 }
-            } else {
-                self.leaves.push(key);
-            }
-
-            self.nodes.insert(key, node);
+                OctreeNode::Leaf(node) => {
+                    self.nodes.insert(key, node);
+                }
+                OctreeNode::None => {}
+            };
         }
     }
 
-    pub fn walk_leaves<W>(&self, mut walker: W)
-    where
-        W: FnMut(Morton),
-    {
-        for &key in &self.leaves {
-            walker(key);
-        }
-    }
-
+    /// Returns an octree node given its coordinates.
     #[inline]
-    pub fn get_node(&self, key: &Morton) -> Option<&Node> {
-        self.nodes.get(key)
+    pub fn get_node(&self, key: Morton) -> OctreeNode<&Node> {
+        if !key.is_none() {
+            return OctreeNode::None;
+        }
+
+        match self.nodes.get(&key) {
+            Some(node) => OctreeNode::Leaf(node),
+            None => OctreeNode::Internal,
+        }
     }
 }

@@ -51,6 +51,7 @@ mod marching_cubes_tables;
 mod mesh;
 mod morton;
 mod point_cloud;
+mod octree_topology;
 
 pub use self::{
     adaptive_dual_contouring::*, dual_contouring::*, extended_marching_cubes::*,

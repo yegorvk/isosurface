@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::linear_hashed_octree::OctreeNode;
 use crate::{
     distance::Distance, linear_hashed_octree::LinearHashedOctree,
     marching_cubes_tables::REMAP_CUBE, morton::Morton, sampler::Sample,
@@ -45,23 +46,25 @@ impl ImplicitOctree {
         C: FnMut(&[Morton; 8], &[Vec3; 8], &[D; 8]),
     {
         let mut octree = LinearHashedOctree::new();
+        let mut leaves = Vec::new();
 
-        octree.build(
-            |key: Morton, distance: &D| {
-                let level = key.level();
-                let size = key.size();
-                // TODO: figure out how to construct an octree over a directed distance field
-                level < 2 || (level < self.max_depth && distance.within_extent(size))
-            },
-            |key: Morton| {
-                let p = key.center();
-                source.sample(p)
-            },
-        );
+        octree.build(|key| {
+            let center = key.center();
+            let distance = source.sample(center);
+
+            let level = key.level();
+
+            if level < 2 || (level < self.max_depth && distance.within_extent(key.size())) {
+                OctreeNode::Internal
+            } else {
+                leaves.push(key);
+                OctreeNode::Leaf(distance)
+            }
+        });
 
         let mut primal_vertices = HashMap::new();
 
-        octree.walk_leaves(|key: Morton| {
+        for key in leaves {
             let level = key.level();
             for i in 0..8 {
                 let vertex = key.primal_vertex(level, i);
@@ -76,7 +79,7 @@ impl ImplicitOctree {
                     }
                 }
             }
-        });
+        }
 
         let mut keys = [Morton::new(); 8];
         let mut corners = [Vec3::ZERO; 8];
@@ -86,7 +89,7 @@ impl ImplicitOctree {
             for i in 0..8 {
                 let mut m = key.dual_vertex(level, REMAP_CUBE[i]);
                 while m > Morton::new() {
-                    if let Some(&distance) = octree.get_node(&m) {
+                    if let Some(&distance) = octree.get_node(m).into_leaf() {
                         keys[i] = m;
                         corners[i] = m.center();
                         values[i] = distance;

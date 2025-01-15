@@ -35,46 +35,78 @@ const DILATE_T3: u64 = 0x6DB6_DB6D_B6DB_6DB6; // ~tx
 const LG2_3: f64 = 0.480_898_346_96; // 1.0 / (ln(2) * 3);
 const MAX_LEVEL: usize = (8 * 8 - 1) / 3; // ((sizeof(u64) in bits) - 1) / 3
 
-/// Refer to an octree node via interleaved integer coordinates
+/// Represents an octree node using interleaved integer coordinates.
+///
+/// Each instance refers to both a primal and a dual vertex of the octree,
+/// that is, both a corner and a cell, except that it is not possible to
+/// represent the corners of the top-level cell.
 #[derive(Default, Hash, Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub struct Morton(u64);
 
 impl Morton {
+    /// The root node of the implied octree.
+    pub const ROOT: Morton = Morton(1);
+
+    /// The "nonexistent" node that is not part of the octree.
+    pub const NONE: Morton = Morton(0);
+
+    /// The maximum allowed level/depth of an octree node.
+    pub const MAX_LEVEL: usize = MAX_LEVEL;
+
     /// Creates a morton code that points to the root octree node
     pub fn new() -> Self {
-        Morton(1)
+        Self::ROOT
     }
 
-    /// Creates a morton code with a specific key code
+    pub fn is_none(&self) -> bool {
+        *self == Self::NONE
+    }
+
+    /// Creates a morton code with the specified key.
     pub fn with_key(key: u64) -> Self {
         Morton(key)
     }
 
-    /// The depth of this octree node
+    /// Computes the depth of this octree node.
+    ///
+    /// The level/depth of an octree node is measured as the number of
+    /// ancestors it has. That is, the root node will have the depth 0.
     pub fn level(&self) -> usize {
-        match self.0 {
-            0 => 0,
-            a => ((a as f64).ln() * LG2_3).floor() as usize,
+        match self.0.checked_ilog2() {
+            Some(a) => {
+                debug_assert_eq!(a % 3, 0);
+                (a / 3) as usize
+            }
+            None => 0,
         }
     }
 
-    /// The parent node to this octree node.
+    /// Returns the parent of this octree node.
+    ///
+    /// If `self` is the root node, returns `Morton::NONE`.
     pub fn parent(&self) -> Self {
-        Morton((self.0 >> 3).max(1))
+        Morton(self.0 >> 3)
     }
 
-    /// Get one of the 8 child nodes of this octree node.
+    /// Returns a child of this octree node.
+    ///
+    /// # Arguments
+    ///
+    /// * `which` - The index of the child, ranging 0 to 7.
     pub fn child(&self, which: u8) -> Self {
         Morton((self.0 << 3) | u64::from(which))
     }
 
-    /// The distance from the center of the octree node to the edge (i.e. half
-    /// the width/height/depth).
+    /// Computes the distance from the center of the octree node to the edge
+    /// of the cell (i.e., half its side length).
     pub fn size(&self) -> f32 {
         1.0 / ((2 << self.level()) as f32)
     }
 
-    /// Get the center of this octree node as a vector.
+    /// Computes the center of this octree node in vector form.
+    ///
+    /// The coordinate system is assumed to be a unit cube with
+    /// the coordinates ranging from 0 to 1.
     pub fn center(&self) -> Vec3 {
         let mut bz = (self.0 >> 2) & DILATE_MASK_0;
         let mut by = (self.0 >> 1) & DILATE_MASK_0;
@@ -101,6 +133,7 @@ impl Morton {
         }
 
         let length_mask = (1 << level) - 1;
+
         bz &= length_mask;
         by &= length_mask;
         bx &= length_mask;
@@ -115,8 +148,13 @@ impl Morton {
         )
     }
 
-    /// Assuming that self is a point on the dual mesh, finds the 8
-    /// corresponding vertices on the primal mesh.
+    /// Assuming that self is a point on the dual mesh (a cell), finds
+    /// the 8 corresponding vertices on the primal mesh (corners).
+    ///
+    /// # Arguments
+    ///
+    /// * `level` - the level of detail to operate on.
+    /// * `which` - the index of the corner vertex, ranging from 0 to 7.
     pub fn primal_vertex(&self, level: usize, which: usize) -> Morton {
         let k = 1 << (3 * level);
         let k_plus_one = k << 1;
@@ -135,11 +173,15 @@ impl Morton {
         }
     }
 
-    /// Assuming that self is a point on the primal mesh, finds the 8
-    /// corresponding vertices on the dual mesh.
+    /// Assuming that self is a point on the primal mesh (a corner), finds
+    /// the 8 corresponding vertices on the dual mesh (cells).
+    ///
+    ///  # Arguments
+    ///
+    /// * `level` - the level of detail to operate on.
+    /// * `which` - the index of the adjacent cell, ranging from 0 to 7.
     pub fn dual_vertex(&self, level: usize, which: usize) -> Morton {
         let dk = Morton(self.0 >> (3 * (MAX_LEVEL - level)));
-
         dk - Morton(which as u64)
     }
 }

@@ -1,25 +1,21 @@
-use glam::Vec3;
 use crate::distance::Signed;
 use crate::extractor::Extractor;
 use crate::feature::PlaceFeatureInCell;
-use crate::index_cache::GridKey;
-use crate::marching_cubes_impl::{
-    classify_corners, find_edge_crossings, march_cube, sample_normals_at_corners,
-};
-use crate::mesh::MeshTopologyBuilder;
+use crate::linear_hashed_octree::LinearHashedOctree;
+use crate::morton::Morton;
 use crate::sampler::Sample;
 use crate::source::HermiteSource;
-use crate::traversal::DualGrid;
+use glam::Vec3;
 
 pub struct AdaptiveDualContouring<P: PlaceFeatureInCell> {
-    dual_grid: DualGrid<Signed>,
+    max_depth: usize,
     place_feature: P,
 }
 
 impl<P: PlaceFeatureInCell> AdaptiveDualContouring<P> {
     pub fn new(max_depth: usize, place_feature: P) -> Self {
         Self {
-            dual_grid: DualGrid::new(1 << max_depth),
+            max_depth,
             place_feature,
         }
     }
@@ -29,40 +25,51 @@ impl<P: PlaceFeatureInCell> AdaptiveDualContouring<P> {
         S: Sample<Signed> + HermiteSource,
         E: Extractor,
     {
-        let mut mesh_builder = MeshTopologyBuilder::new(extractor);
-        let mut normals = [Vec3::ZERO; 8];
+        // let mut octree = LinearHashedOctree::new();
+        // 
+        // octree.build(
+        //     |key, cell: &Cell| key.level() < 2 || cell.is_flat(0.01),
+        //     |key| Cell::new(source, key, &self.place_feature),
+        // );
+        // 
+        // octree.walk_leaves(|key| {
+        //     let vertex = octree.get_leaf_node(key).unwrap().vertex;
+        //     
+        // })
+    }
+}
 
-        let dual_grid = &mut self.dual_grid;
-        let place_feature = &mut self.place_feature;
+struct Cell {
+    normals: [Vec3; 8],
+    vertex: Vec3,
+}
 
-        dual_grid.traverse(
-            source,
-            Some(|corners: &[Vec3; 8], values: &[Signed; 8]| {
-                let cube_index = classify_corners(values);
-                if cube_index == 0 || cube_index == 255 {
-                    return None;
-                }
+impl Cell {
+    fn new<S, P>(source: &S, key: Morton, place_feature: &P) -> Cell
+    where
+        S: Sample<Signed> + HermiteSource,
+        P: PlaceFeatureInCell,
+    {
+        let mut corners = [Vec3::ZERO; 8];
 
-                sample_normals_at_corners(source, corners, &mut normals);
+        for (i, corner) in corners.iter_mut().enumerate() {
+            *corner = key.primal_vertex(key.level(), i).center();
+        }
 
-                Some(place_feature.place_feature_in_cell(corners, &normals))
-            }),
-            |keys, corners, values| {
-                let cube_index = classify_corners(values);
+        let normals = corners.map(|corner| source.sample_normal(corner).normalize());
+        let vertex = place_feature.place_feature_in_cell(&corners, &normals);
 
-                let mut vertices = [Vec3::ZERO; 12];
-                find_edge_crossings(cube_index, corners, values, &mut vertices);
+        Self { normals, vertex }
+    }
 
-                march_cube(cube_index, |a, b, c| {
-                    let a = mesh_builder.add_vertex(Some(GridKey::new(keys, a)), vertices[a]);
-                    let b = mesh_builder.add_vertex(Some(GridKey::new(keys, b)), vertices[b]);
-                    let c = mesh_builder.add_vertex(Some(GridKey::new(keys, c)), vertices[c]);
-
-                    mesh_builder.add_face(a, b, c);
-                });
-            },
-        );
-
-        mesh_builder.build().extract_indices(extractor);
+    fn is_flat(&self, tol: f32) -> bool {
+        todo!()
+        // for (n_a, n_b) in self.normals.iter().tuple_combinations() {
+        //     if (n_a - n_b).length_squared() > tol * tol {
+        //         return false;
+        //     }
+        // }
+        // 
+        // true
     }
 }
