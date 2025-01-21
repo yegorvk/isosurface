@@ -1,4 +1,5 @@
 use crate::morton::Morton;
+use const_array_map::{const_array_map, ConstArrayMap, PrimitiveEnum};
 use std::mem;
 use std::mem::MaybeUninit;
 
@@ -8,8 +9,8 @@ use std::mem::MaybeUninit;
 pub struct Cell(Morton);
 
 impl Cell {
-    /// Creates a new `Cell` from its morton code. 
-    /// 
+    /// Creates a new `Cell` from its morton code.
+    ///
     /// If `key` doesn't represent a valid octree node, returns None.
     pub fn new(key: Morton) -> Option<Cell> {
         if !key.is_none() {
@@ -25,19 +26,19 @@ impl Cell {
     }
 
     /// Retrieves the sub-cell of this cell adjacent to `corner`.
-    /// 
-    /// This method does not distinguish between interior and leaf cells, 
-    /// so the caller must ensure that `self` is not a leaf to preserve 
+    ///
+    /// This method does not distinguish between interior and leaf cells,
+    /// so the caller must ensure that `self` is not a leaf to preserve
     /// the expected behavior.
     fn sub_cell(&self, corner: Corner) -> Cell {
         Cell(self.0.child(corner.0))
     }
 
     /// Returns an iterator over this cell's sub-cells, in any order.
-    /// 
+    ///
     /// This method does not distinguish between interior and leaf cells, so
     /// the returned iterator will always yield 8 elements.
-    pub fn subdivide(&self) -> impl Iterator<Item=Cell> + use < '_ > {
+    pub fn subdivide(&self) -> impl Iterator<Item = Cell> + use<'_> {
         (0..8).map(|i| Cell(self.0.child(i)))
     }
 
@@ -46,7 +47,7 @@ impl Cell {
     ///
     /// This method does not distinguish between interior and leaf cells, so
     /// the returned iterator will always yield 12 elements.
-    pub fn interior_faces(&self) -> impl Iterator<Item=Face> + use < '_ > {
+    pub fn interior_faces(&self) -> impl Iterator<Item = Face> + use<'_> {
         CELL_EDGES.iter().map(|edge| Face::from_edge(self, *edge))
     }
 
@@ -55,7 +56,7 @@ impl Cell {
     ///
     /// This method does not distinguish between interior and leaf cells, so
     /// the returned iterator will always yield 6 elements.
-    pub fn interior_edges(&self) -> impl Iterator<Item=Edge> + use < '_ > {
+    pub fn interior_edges(&self) -> impl Iterator<Item = Edge> + use<'_> {
         CELL_FACES.iter().map(|face| Edge::from_face(self, *face))
     }
 
@@ -95,15 +96,15 @@ impl Dir {
 }
 
 #[repr(u8)]
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, PrimitiveEnum)]
 enum Axis {
-    X = 0,
-    Y = 1,
-    Z = 2,
+    X, // 0
+    Y, // 1
+    Z, // 2
 }
 
 #[repr(transparent)]
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Default, Copy, Clone)]
 struct Corner(u8);
 
 impl Corner {
@@ -140,14 +141,14 @@ impl EdgeKind {
 }
 
 #[repr(u8)]
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PrimitiveEnum)]
 enum FaceKind {
-    Left = 0,
-    Right = 1,
-    Bottom = 2,
-    Top = 3,
-    Back = 4,
-    Front = 5,
+    Left,   // 0
+    Right,  // 1
+    Bottom, // 2
+    Top,    // 3
+    Back,   // 4
+    Front,  // 5
 }
 
 impl FaceKind {
@@ -157,21 +158,6 @@ impl FaceKind {
             FaceKind::Bottom | FaceKind::Top => Axis::Y,
             FaceKind::Back | FaceKind::Front => Axis::Z,
         }
-    }
-}
-
-unsafe impl Indexable for FaceKind {
-    const SIZE: usize = 6;
-    const SET_SIZE: usize = 1;
-
-    type Iter = std::array::IntoIter<FaceKind, 6>;
-
-    fn index(self) -> usize {
-        self as u8 as usize
-    }
-
-    fn iter() -> Self::Iter {
-        CELL_FACES.into_iter()
     }
 }
 
@@ -199,83 +185,183 @@ const CELL_FACES: [FaceKind; 6] = [
     FaceKind::Front,
 ];
 
-const CELL_FACE_CORNERS: ArrayMap<FaceKind, [Corner; 4], 6> = ArrayMap::new([
-    // Left
-    [
+const CELL_FACE_CORNERS: ConstArrayMap<FaceKind, [Corner; 4]> = const_array_map! {
+    FaceKind::Left => [
         Corner::LEFT_BOTTOM_BACK,
         Corner::LEFT_TOP_BACK,
         Corner::LEFT_TOP_FRONT,
         Corner::LEFT_BOTTOM_FRONT,
     ],
-    // Right
-    [
+    FaceKind::Right => [
         Corner::RIGHT_BOTTOM_BACK,
         Corner::RIGHT_TOP_BACK,
         Corner::RIGHT_TOP_FRONT,
         Corner::RIGHT_BOTTOM_FRONT,
     ],
-    // Bottom
-    [
+    FaceKind::Bottom => [
         Corner::LEFT_BOTTOM_BACK,
         Corner::RIGHT_BOTTOM_BACK,
         Corner::RIGHT_BOTTOM_FRONT,
         Corner::LEFT_BOTTOM_FRONT,
     ],
-    // Top
-    [
+    FaceKind::Top => [
         Corner::LEFT_TOP_BACK,
         Corner::RIGHT_TOP_BACK,
         Corner::RIGHT_TOP_FRONT,
         Corner::LEFT_TOP_FRONT,
     ],
-    // Back
-    [
+    FaceKind::Back => [
         Corner::LEFT_BOTTOM_BACK,
         Corner::LEFT_TOP_BACK,
         Corner::RIGHT_TOP_BACK,
         Corner::RIGHT_BOTTOM_BACK,
     ],
-    // Front
-    [
+    FaceKind::Front => [
         Corner::LEFT_BOTTOM_FRONT,
         Corner::LEFT_TOP_FRONT,
         Corner::RIGHT_TOP_FRONT,
         Corner::RIGHT_BOTTOM_FRONT,
     ],
-]);
+};
 
-const EDGE_NEIGHBORS: ArrayMap<Axis, [EdgeKind; 4], 3> = ArrayMap::new([
-    // X
-    [
+const EDGE_NEIGHBORS: ConstArrayMap<Axis, [EdgeKind; 4]> = const_array_map! {
+    Axis::X => [
         EdgeKind::new(Corner::LEFT_BOTTOM_BACK, Dir::X),
         EdgeKind::new(Corner::LEFT_TOP_BACK, Dir::X),
         EdgeKind::new(Corner::LEFT_TOP_FRONT, Dir::X),
         EdgeKind::new(Corner::LEFT_BOTTOM_FRONT, Dir::X),
     ],
-    // Y
-    [
+    Axis::Y => [
         EdgeKind::new(Corner::LEFT_BOTTOM_BACK, Dir::Y),
         EdgeKind::new(Corner::RIGHT_BOTTOM_BACK, Dir::Y),
         EdgeKind::new(Corner::RIGHT_BOTTOM_FRONT, Dir::Y),
         EdgeKind::new(Corner::LEFT_BOTTOM_FRONT, Dir::Y),
     ],
-    // Z
-    [
+    Axis::Z => [
         EdgeKind::new(Corner::LEFT_BOTTOM_BACK, Dir::Z),
         EdgeKind::new(Corner::RIGHT_BOTTOM_BACK, Dir::Z),
         EdgeKind::new(Corner::RIGHT_TOP_BACK, Dir::Z),
         EdgeKind::new(Corner::LEFT_TOP_BACK, Dir::Z),
     ],
-]);
+};
 
-const FACE_NEIGHBORS: ArrayMap<Axis, [FaceKind; 2], 3> = ArrayMap::new([
-    // X
-    [FaceKind::Left, FaceKind::Right],
-    // Y
-    [FaceKind::Bottom, FaceKind::Top],
-    // Z
-    [FaceKind::Back, FaceKind::Front],
-]);
+const FACE_NEIGHBORS: ConstArrayMap<Axis, [FaceKind; 2]> = const_array_map! {
+    Axis::X => [FaceKind::Left, FaceKind::Right],
+    Axis::Y => [FaceKind::Bottom, FaceKind::Top],
+    Axis::Z => [FaceKind::Back, FaceKind::Front],
+};
+
+#[allow(clippy::type_complexity)]
+const FACE_EDGES: ConstArrayMap<Axis, [(Axis, [[(usize, Corner); 4]; 2]); 2]> = const_array_map! {
+    Axis::X => [
+        (
+            Axis::Y,
+            [
+                [
+                    (0, Corner::RIGHT_BOTTOM_BACK),
+                    (1, Corner::LEFT_BOTTOM_BACK),
+                    (1, Corner::LEFT_BOTTOM_FRONT),
+                    (0, Corner::RIGHT_BOTTOM_FRONT),
+                ],
+                [
+                    (0, Corner::RIGHT_TOP_BACK),
+                    (1, Corner::LEFT_TOP_BACK),
+                    (1, Corner::LEFT_TOP_FRONT),
+                    (0, Corner::RIGHT_TOP_FRONT),
+                ],
+            ]
+        ),
+        (
+            Axis::Z,
+            [
+                [
+                    (0, Corner::RIGHT_BOTTOM_BACK),
+                    (1, Corner::LEFT_BOTTOM_BACK),
+                    (1, Corner::LEFT_TOP_BACK),
+                    (0, Corner::RIGHT_TOP_BACK),
+                ],
+                [
+                    (0, Corner::RIGHT_BOTTOM_FRONT),
+                    (1, Corner::LEFT_BOTTOM_FRONT),
+                    (1, Corner::LEFT_TOP_FRONT),
+                    (0, Corner::RIGHT_TOP_FRONT),
+                ],
+            ]
+        ),
+    ],
+    Axis::Y => [
+        (
+            Axis::X,
+            [
+                [
+                    (0, Corner::LEFT_TOP_BACK),
+                    (1, Corner::LEFT_BOTTOM_BACK),
+                    (1, Corner::LEFT_BOTTOM_FRONT),
+                    (0, Corner::LEFT_TOP_FRONT),
+                ],
+                [
+                    (0, Corner::RIGHT_TOP_BACK),
+                    (1, Corner::RIGHT_BOTTOM_BACK),
+                    (1, Corner::RIGHT_BOTTOM_FRONT),
+                    (0, Corner::RIGHT_TOP_FRONT),
+                ],
+            ]
+        ),
+        (
+            Axis::Z,
+            [
+                [
+                    (0, Corner::LEFT_TOP_BACK),
+                    (0, Corner::RIGHT_TOP_BACK),
+                    (1, Corner::RIGHT_BOTTOM_BACK),
+                    (1, Corner::LEFT_BOTTOM_BACK),
+                ],
+                [
+                    (0, Corner::LEFT_TOP_FRONT),
+                    (0, Corner::RIGHT_TOP_FRONT),
+                    (1, Corner::RIGHT_BOTTOM_FRONT),
+                    (1, Corner::LEFT_BOTTOM_FRONT),
+                ],
+            ]
+        ),
+    ],
+    Axis::Z => [
+        (
+            Axis::X,
+            [
+                [
+                    (0, Corner::LEFT_BOTTOM_FRONT),
+                    (0, Corner::LEFT_TOP_FRONT),
+                    (1, Corner::LEFT_TOP_BACK),
+                    (1, Corner::LEFT_BOTTOM_BACK),
+                ],
+                [
+                    (0, Corner::RIGHT_BOTTOM_FRONT),
+                    (0, Corner::RIGHT_TOP_FRONT),
+                    (1, Corner::RIGHT_TOP_BACK),
+                    (1, Corner::RIGHT_BOTTOM_BACK),
+                ],
+            ]
+        ),
+        (
+            Axis::Y,
+            [
+                [
+                    (0, Corner::LEFT_BOTTOM_FRONT),
+                    (0, Corner::RIGHT_BOTTOM_FRONT),
+                    (1, Corner::RIGHT_BOTTOM_BACK),
+                    (1, Corner::LEFT_BOTTOM_BACK),
+                ],
+                [
+                    (0, Corner::LEFT_TOP_FRONT),
+                    (0, Corner::RIGHT_TOP_FRONT),
+                    (1, Corner::RIGHT_TOP_BACK),
+                    (1, Corner::LEFT_TOP_BACK),
+                ],
+            ]
+        ),
+    ],
+};
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub struct Face {
@@ -319,8 +405,8 @@ impl Face {
             [second; 4]
         };
 
-        // SAFETY: reinterpreting uninitialized memory as an array
-        // of uninitialized values is always safe.
+        // SAFETY: reinterpreting uninitialized memory as an array of
+        // uninitialized values is always safe.
         let mut sub_faces: [MaybeUninit<Face>; 4] = unsafe { MaybeUninit::uninit().assume_init() };
 
         for i in 0..4 {
@@ -336,11 +422,28 @@ impl Face {
         Some(sub_face)
     }
 
-    // pub fn interior_edges(&self, sub_faces: &[Face; 4]) -> [Edge; 4] {
-    //     [
-    //         Edge::new()
-    //     ]
-    // }
+    // TODO: rewrite using safe abstractions.
+    pub fn interior_edges(&self, sub_faces: &[Face; 4]) -> [Edge; 4] {
+        // SAFETY: reinterpreting uninitialized memory as an array of
+        // uninitialized values is always safe.
+        let mut interior_edges: [MaybeUninit<Edge>; 4] =
+            unsafe { MaybeUninit::uninit().assume_init() };
+
+        let mut i = 0;
+
+        for (axis, edges) in &FACE_EDGES[self.normal] {
+            for neighbors in edges {
+                let neighbors =
+                    neighbors.map(|(which, corner)| self.neighbors[which].sub_cell(corner));
+
+                interior_edges[i].write(Edge::new(*axis, neighbors));
+                i += 1;
+            }
+        }
+
+        // SAFETY: we have just fully initialized `interior_edges`.
+        unsafe { mem::transmute(interior_edges) }
+    }
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
@@ -359,7 +462,6 @@ impl Edge {
         let axis = face.normal();
         Self { axis, neighbors }
     }
-
 
     // TODO: rewrite using safe abstractions.
     fn subdivide(&self, mask: EdgeNeighborsMask) -> Option<[Edge; 2]> {
