@@ -421,28 +421,39 @@ impl Face {
 
         Some(sub_face)
     }
+    
+    // pub fn interior_edges(&self, sub_faces: &[Face; 4]) -> [Edge; 4] {
+    //     // SAFETY: reinterpreting uninitialized memory as an array of
+    //     // uninitialized values is always safe.
+    //     let mut interior_edges: [MaybeUninit<Edge>; 4] =
+    //         unsafe { MaybeUninit::uninit().assume_init() };
+    // 
+    //     let mut i = 0;
+    // 
+    //     for (axis, edges) in &FACE_EDGES[self.normal] {
+    //         for neighbors in edges {
+    //             let neighbors =
+    //                 neighbors.map(|(which, corner)| self.neighbors[which].sub_cell(corner));
+    // 
+    //             interior_edges[i].write(Edge::new(*axis, neighbors));
+    //             i += 1;
+    //         }
+    //     }
+    // 
+    //     // SAFETY: we have just fully initialized `interior_edges`.
+    //     unsafe { mem::transmute(interior_edges) }
+    // }
+    
+    pub fn interior_edges(&self) -> impl Iterator<Item = Edge> + use<'_> {
+        FACE_EDGES[self.normal].iter().flat_map(|(axis, edges)| {
+            edges.map(|neighbors| {
+                let neighbors = neighbors.map(|(which, corner)| {
+                    self.neighbors[which].sub_cell(corner)
+                });
 
-    // TODO: rewrite using safe abstractions.
-    pub fn interior_edges(&self, sub_faces: &[Face; 4]) -> [Edge; 4] {
-        // SAFETY: reinterpreting uninitialized memory as an array of
-        // uninitialized values is always safe.
-        let mut interior_edges: [MaybeUninit<Edge>; 4] =
-            unsafe { MaybeUninit::uninit().assume_init() };
-
-        let mut i = 0;
-
-        for (axis, edges) in &FACE_EDGES[self.normal] {
-            for neighbors in edges {
-                let neighbors =
-                    neighbors.map(|(which, corner)| self.neighbors[which].sub_cell(corner));
-
-                interior_edges[i].write(Edge::new(*axis, neighbors));
-                i += 1;
-            }
-        }
-
-        // SAFETY: we have just fully initialized `interior_edges`.
-        unsafe { mem::transmute(interior_edges) }
+                Edge::new(*axis, neighbors)
+            })
+        })
     }
 }
 
@@ -461,6 +472,10 @@ impl Edge {
         let neighbors = cell.face_sub_cells(face);
         let axis = face.normal();
         Self { axis, neighbors }
+    }
+    
+    pub fn neighbors(&self) -> &[Cell; 4] {
+        &self.neighbors
     }
 
     // TODO: rewrite using safe abstractions.

@@ -1,4 +1,3 @@
-use std::io::empty;
 use crate::morton::Morton;
 use crate::octree_topology::{Cell, Edge, Face};
 
@@ -12,7 +11,7 @@ impl MinimalEdges {
     {
         let mut stack = Vec::new();
         stack.push(Primitive::Cell(Cell::new(Morton::ROOT).unwrap()));
-        
+
         let mut is_leaf = |cell: &Cell| is_leaf(cell.key());
 
         while let Some(primitive) = stack.pop() {
@@ -21,15 +20,15 @@ impl MinimalEdges {
                     if is_leaf(&cell) {
                         continue;
                     }
-                    
-                    for sub_cell in cell.subdivide(){
+
+                    for sub_cell in cell.subdivide() {
                         stack.push(Primitive::Cell(sub_cell));
                     }
-                    
+
                     for interior_face in cell.interior_faces() {
                         stack.push(Primitive::Face(interior_face));
                     }
-                    
+
                     for interior_edge in cell.interior_edges() {
                         stack.push(Primitive::Edge(interior_edge));
                     }
@@ -40,10 +39,20 @@ impl MinimalEdges {
                             stack.push(Primitive::Face(sub_face))
                         }
                     }
-                    
-                    
+
+                    for interior_edge in face.interior_edges() {
+                        stack.push(Primitive::Edge(interior_edge));
+                    }
                 }
-                Primitive::Edge(edge) => {}
+                Primitive::Edge(edge) => {
+                    if let Some(sub_edges) = edge.subdivide_by(&mut is_leaf) {
+                        for sub_edge in sub_edges {
+                            stack.push(Primitive::Edge(sub_edge));
+                        }
+                    } else {
+                        edge_callback(&edge.neighbors().map(|cell| cell.key()))
+                    }
+                }
             }
         }
     }
